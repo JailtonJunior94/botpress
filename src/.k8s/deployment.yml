@@ -1,0 +1,176 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: atendimento
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: atendimento
+  name: bot-server
+  labels:
+    app: bot-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot-server
+  template:
+    metadata:
+      labels:
+        app: bot-server
+    spec:
+      containers:
+        - image: jailtonjunior/bot-custom:v2
+          name: bot-server
+          imagePullPolicy: Always
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+          env:
+            - name: EXTERNAL_URL
+              value: http://bot-server-service
+
+            - name: BP_MODULE_NLU_DUCKLINGURL
+              value: http://bot-lang-service:8000
+
+            - name: BP_MODULE_NLU_LANGUAGESOURCES
+              value: '[{"endpoint":"http://bot-lang-service:3100"}]'
+
+            - name: CLUSTER_ENABLED
+              value: "true"
+
+            - name: BP_PRODUCTION
+              value: "true"
+
+            - name: DATABASE_URL
+              value: ''
+          ports:
+            - name: http
+              containerPort: 3000
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: atendimento
+  name: bot-server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bot-server
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 60
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: atendimento
+  name: bot-server-service
+spec:
+  selector:
+    app: bot-server
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: atendimento
+  name: bot-lang
+  labels:
+    app: bot-lang
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot-lang
+  template:
+    metadata:
+      labels:
+        app: bot-lang
+    spec:
+      containers:
+        - image: jailtonjunior/bot-custom:v2
+          name: bot-lang
+          imagePullPolicy: Always
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "100m"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          command: ["/bin/sh"]
+          args:
+            [
+              "-c",
+              "./duckling -p 8000 & ./bp lang --langDir /botpress/lang --port 3100",
+            ]
+          ports:
+            - containerPort: 3100
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: atendimento
+  name: bot-lang-service
+spec:
+  selector:
+    app: bot-lang
+  ports:
+    - name: externalurl
+      port: 3100
+      targetPort: 3100
+    - name: nlu
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: atendimento
+  name: ingress-hosts
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-production
+spec:
+  tls:
+    - hosts:
+        - botpress.jailtonjunior.site
+      secretName: bot-api-tls
+  rules:
+    - host: botpress.jailtonjunior.site
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: bot-server-service
+                port:
+                  number: 80
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+spec:
+  acme:
+    email: jailton.teixeira1@gmail.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-production
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
