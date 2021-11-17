@@ -15,6 +15,11 @@ spec:
   selector:
     matchLabels:
       app: bot-server
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5
   template:
     metadata:
       labels:
@@ -23,7 +28,6 @@ spec:
       containers:
         - image: jailtonjunior/bot-custom:v2
           name: bot-server
-          imagePullPolicy: Always
           resources:
             limits:
               memory: "1Gi"
@@ -41,9 +45,6 @@ spec:
             - name: BP_MODULE_NLU_LANGUAGESOURCES
               value: '[{"endpoint":"http://bot-lang-service:3100"}]'
 
-            - name: CLUSTER_ENABLED
-              value: "true"
-
             - name: BP_PRODUCTION
               value: "true"
 
@@ -52,6 +53,12 @@ spec:
           ports:
             - name: http
               containerPort: 3000
+          volumeMounts:
+            - mountPath: /botpress/data
+              name: botpressserver
+      volumes:
+        - name: botpressserver
+          emptyDir: {}
 ---
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
@@ -92,6 +99,11 @@ spec:
   selector:
     matchLabels:
       app: bot-lang
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5
   template:
     metadata:
       labels:
@@ -100,14 +112,13 @@ spec:
       containers:
         - image: jailtonjunior/bot-custom:v2
           name: bot-lang
-          imagePullPolicy: Always
           resources:
             limits:
-              memory: "256Mi"
-              cpu: "100m"
+              memory: "3Gi"
+              cpu: "500m"
             requests:
-              memory: "256Mi"
-              cpu: "100m"
+              memory: "3Gi"
+              cpu: "500m"
           command: ["/bin/sh"]
           args:
             [
@@ -117,6 +128,12 @@ spec:
           ports:
             - containerPort: 3100
             - containerPort: 8000
+          volumeMounts:
+            - mountPath: /botpress/lang
+              name: bplang
+      volumes:
+        - name: bplang
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -146,10 +163,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - botpress.jailtonjunior.site
+        - botpress.limateixeira.site
       secretName: bot-api-tls
   rules:
-    - host: botpress.jailtonjunior.site
+    - host: botpress.limateixeira.site
       http:
         paths:
           - pathType: Prefix
@@ -166,7 +183,7 @@ metadata:
   name: letsencrypt-production
 spec:
   acme:
-    email: jailton.teixeira1@gmail.com
+    email: jailton.junior94@outlook.com
     server: https://acme-v02.api.letsencrypt.org/directory
     privateKeySecretRef:
       name: letsencrypt-production
