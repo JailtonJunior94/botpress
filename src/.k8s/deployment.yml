@@ -3,6 +3,18 @@ apiVersion: v1
 metadata:
   name: bot
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: bot
+  name: botpress-config
+data:
+  BP_PRODUCTION: "true"
+  EXTERNAL_URL: http://bot-server-service
+  BP_MODULE_NLU_DUCKLINGURL: http://bot-lang-service:8000
+  BP_MODULE_NLU_LANGUAGESOURCES: '[{"endpoint":"http://bot-lang-service:3100"}]'
+  DATABASE_URL: postgres://psqladmin@botpress-postgresql-server:H@Sh1CoR3!@botpress-postgresql-server.postgres.database.azure.com:5432/botpress_db?ssl=true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,30 +47,12 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "500m"
-          env:
-            - name: EXTERNAL_URL
-              value: http://bot-server-service
-
-            - name: BP_MODULE_NLU_DUCKLINGURL
-              value: http://bot-lang-service:8000
-
-            - name: BP_MODULE_NLU_LANGUAGESOURCES
-              value: '[{"endpoint":"http://bot-lang-service:3100"}]'
-
-            - name: BP_PRODUCTION
-              value: "true"
-
-            - name: DATABASE_URL
-              value: ''
+          envFrom:
+            - configMapRef:
+                name: botpress-config
           ports:
             - name: http
               containerPort: 3000
-          volumeMounts:
-            - mountPath: /botpress/data
-              name: botpressserver
-      volumes:
-        - name: botpressserver
-          emptyDir: {}
 ---
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
@@ -128,12 +122,6 @@ spec:
           ports:
             - containerPort: 3100
             - containerPort: 8000
-          volumeMounts:
-            - mountPath: /botpress/lang
-              name: bplang
-      volumes:
-        - name: bplang
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
